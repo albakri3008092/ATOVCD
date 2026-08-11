@@ -79,7 +79,9 @@ class Engine:
                 return
             session_id = self._session_id
             transitions = [t for t in self._targets if self._advance(t, settings)]
-            snapshot = [(t["id"], t["state"], t["confidence"], self._bbox_text(t)) for t in transitions]
+            snapshot = [
+                (t["id"], t["state"], t["confidence"], self._bbox_text(t, settings)) for t in transitions
+            ]
         for target_id, state, confidence, bbox in snapshot:
             self._db.add_event(session_id, target_id, state, confidence, bbox)
 
@@ -164,23 +166,26 @@ class Engine:
                     "id": t["id"],
                     "state": t["state"],
                     "confidence": t["confidence"],
-                    "bbox": self._bbox(t),
+                    "bbox": self._bbox(t, settings),
                 }
                 for t in targets
             ],
         }
 
-    def _bbox(self, target: dict) -> dict:
-        half = target["size"] / 2
+    def _bbox(self, target: dict, settings) -> dict:
+        """Normalise a square target to the frame, so it stays square once scaled."""
+        short_edge = min(settings.camera_width, settings.camera_height)
+        width = target["size"] * short_edge / settings.camera_width
+        height = target["size"] * short_edge / settings.camera_height
         return {
-            "x": round(_clamp(target["cx"] - half, 0.0, 1.0), 4),
-            "y": round(_clamp(target["cy"] - half, 0.0, 1.0), 4),
-            "w": round(target["size"], 4),
-            "h": round(target["size"], 4),
+            "x": round(_clamp(target["cx"] - width / 2, 0.0, 1.0), 4),
+            "y": round(_clamp(target["cy"] - height / 2, 0.0, 1.0), 4),
+            "w": round(width, 4),
+            "h": round(height, 4),
         }
 
-    def _bbox_text(self, target: dict) -> str:
-        box = self._bbox(target)
+    def _bbox_text(self, target: dict, settings) -> str:
+        box = self._bbox(target, settings)
         return f"{box['x']},{box['y']},{box['w']},{box['h']}"
 
 
