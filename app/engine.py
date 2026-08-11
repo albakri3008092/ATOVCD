@@ -1,44 +1,46 @@
-"""Target tracking / visual-change state machine.
+"""Detection loop: camera frame -> detector -> tracker -> events + telemetry.
 
-The prototype drives the UI from a simulated tracker so the operator flow can
-be validated before the Hailo inference pipeline lands. Swap
-:meth:`Engine.analyse` for a real inference call and the rest of the stack
-(API, history, reports) keeps working unchanged.
+The engine runs the real pipeline on every logic tick: it pulls a frame from the
+configured camera, hands it to the configured detector backend (OpenCV, Hailo or
+the scripted simulator), folds the detections into the tracker and logs every
+visual-change transition against the active session.
 """
 
 import math
-import random
 import threading
 import time
+from time import perf_counter
 
 from .config import SettingsStore
 from .db import Database
+from .detect import build_detector
+from .scene import Scene
+from .tracking import Tracker
 
 CHANGE_STATES = ("DETECTED", "NEW", "OLD", "UNCERTAIN")
-TARGET_LAYOUT = [
-    {"id": "TGT-01", "cx": 0.22, "cy": 0.42, "size": 0.20},
-    {"id": "TGT-02", "cx": 0.50, "cy": 0.36, "size": 0.16},
-    {"id": "TGT-03", "cx": 0.78, "cy": 0.46, "size": 0.22},
-]
 
 
 class Engine:
-    """Owns target state, per-session telemetry and change logging."""
+    """Owns the detector, the tracked targets and per-session change logging."""
 
-    def __init__(self, database: Database, settings: SettingsStore) -> None:
+    def __init__(self, database: Database, settings: SettingsStore, camera, scene: Scene) -> None:
         self._db = database
         self._settings = settings
+        self._camera = camera
+        self._scene = scene
         self._lock = threading.Lock()
-        self._rng = random.Random(20260811)
         self._boot_ts = time.time()
         self._tick = 0
         self._running = False
         self._session_id: int | None = None
         self._session_started: float | None = None
-        self._targets = [
-            dict(spec, state="DETECTED", confidence=0.90, seed=i + 1, changed_at=time.time())
-            for i, spec in enumerate(TARGET_LAYOUT)
-        ]
+        self._tracker = Tracker()
+        self._latency_ms = 0.0
+        self._detections = 0
+        self._detector_error = ""
+        mode = settings.get().detector_mode
+        self._detector = build_detector(mode, scene)
+        self._detector_mode = mode
         active = database.active_session()
         if active is not None:
             self._session_id = int(active["id"])
@@ -49,11 +51,17 @@ class Engine:
 
     def start_session(self, label: str = "") -> int:
         with self._lock:
-            if self._session_id is None:
+            fresh = self._session_id is None
+            if fresh:
                 self._session_id = self._db.start_session(label)
                 self._session_started = time.time()
             self._running = True
-            return self._session_id
+            session_id = self._session_id
+            baseline = [(t.id, t.state, t.confidence, t.bbox_text()) for t in self._tracker.tracks]
+        if fresh:  # record the scene the operator started with, not just later changes
+            for target_id, state, confidence, bbox in baseline:
+                self._db.add_event(session_id, target_id, state, confidence, bbox)
+        return session_id
 
     def stop_session(self) -> None:
         with self._lock:
@@ -71,60 +79,55 @@ class Engine:
     # ------------------------------------------------------------------ ticks
 
     def step(self) -> None:
-        """Advance the tracker one logic tick (called ~4x per second)."""
+        """Run one detection pass (called ~4x per second)."""
         settings = self._settings.get()
+        detector = self._current_detector(settings)
+        started = perf_counter()
+        try:
+            frame = None if detector.mode == "simulate" else self._camera.frame(settings)
+            detections = detector.detect(frame, settings)
+            error = ""
+        except Exception as exc:  # a detector fault must not stop the console
+            detections, error = [], f"{type(exc).__name__}: {exc}"
+        latency = (perf_counter() - started) * 1000
+
         with self._lock:
             self._tick += 1
-            if not self._running or self._session_id is None:
-                return
-            session_id = self._session_id
-            transitions = [t for t in self._targets if self._advance(t, settings)]
-            snapshot = [
-                (t["id"], t["state"], t["confidence"], self._bbox_text(t, settings)) for t in transitions
-            ]
-        for target_id, state, confidence, bbox in snapshot:
+            self._latency_ms = round(latency, 1)
+            self._detections = len(detections)
+            self._detector_error = error
+            changed = self._tracker.update(detections, settings.detection_confidence)
+            session_id = self._session_id if self._running else None
+            events = [(t.id, t.state, t.confidence, t.bbox_text()) for t in changed]
+
+        if session_id is None:
+            return
+        for target_id, state, confidence, bbox in events:
             self._db.add_event(session_id, target_id, state, confidence, bbox)
 
-    def _advance(self, target: dict, settings) -> bool:
-        """Drift a target and decide whether its visual state changed."""
-        target["cx"] = _clamp(target["cx"] + self._rng.uniform(-0.004, 0.004), 0.10, 0.90)
-        target["cy"] = _clamp(target["cy"] + self._rng.uniform(-0.003, 0.003), 0.18, 0.72)
-
-        if time.time() - target["changed_at"] < 2.0:
-            return False
-        if self._rng.random() > settings.change_sensitivity * 0.12:
-            return False
-
-        confidence = round(self._rng.uniform(0.42, 0.99), 2)
-        if confidence < settings.detection_confidence:
-            state = "UNCERTAIN"
-        elif target["state"] in ("NEW", "UNCERTAIN"):
-            state = "OLD"
-        else:
-            state = "NEW"
-        target["state"] = state
-        target["confidence"] = confidence
-        target["changed_at"] = time.time()
-        return True
-
-    def analyse(self, frame) -> list[dict]:
-        """Hook for the real detector: return detections for a captured frame."""
-        raise NotImplementedError("wire the Hailo/OpenCV pipeline here")
+    def _current_detector(self, settings):
+        """Rebuild the detector when the operator switches backend."""
+        with self._lock:
+            if settings.detector_mode == self._detector_mode:
+                return self._detector
+        detector = build_detector(settings.detector_mode, self._scene)
+        with self._lock:
+            self._detector = detector
+            self._detector_mode = settings.detector_mode
+            return detector
 
     # ------------------------------------------------------------- read model
-
-    def targets(self) -> list[dict]:
-        with self._lock:
-            return [dict(t) for t in self._targets]
 
     def status(self) -> dict:
         settings = self._settings.get()
         with self._lock:
             tick, session_id, started = self._tick, self._session_id, self._session_started
-            targets = [dict(t) for t in self._targets]
+            tracks = list(self._tracker.tracks)
+            detector, latency = self._detector, self._latency_ms
+            detections, error = self._detections, self._detector_error
         uptime = time.time() - self._boot_ts
         counts = self._db.counts(session_id) if session_id is not None else {}
-        primary = max(targets, key=lambda t: t["confidence"])
+        primary = max(tracks, key=lambda t: t.confidence, default=None)
         return {
             "online": True,
             "server_time": time.time(),
@@ -136,9 +139,18 @@ class Engine:
             },
             "camera": {
                 "status": "ONLINE",
+                "source": self._camera.status,
                 "width": settings.camera_width,
                 "height": settings.camera_height,
                 "fps": settings.frame_rate,
+            },
+            "ai": {
+                "mode": detector.mode,
+                "backend": detector.name,
+                "status": "FAULT" if error else detector.status,
+                "detections": detections,
+                "latency_ms": latency,
+                "error": error,
             },
             "imu": {
                 "status": "LOCKED",
@@ -151,9 +163,9 @@ class Engine:
                 "monitored": settings.battery_monitoring,
             },
             "primary_target": {
-                "id": primary["id"],
-                "state": primary["state"],
-                "confidence": primary["confidence"],
+                "id": primary.id if primary else "—",
+                "state": primary.state if primary else "IDLE",
+                "confidence": primary.confidence if primary else 0.0,
             },
             "counts": {
                 "new": counts.get("NEW", 0),
@@ -163,31 +175,12 @@ class Engine:
             },
             "targets": [
                 {
-                    "id": t["id"],
-                    "state": t["state"],
-                    "confidence": t["confidence"],
-                    "bbox": self._bbox(t, settings),
+                    "id": t.id,
+                    "label": t.label,
+                    "state": t.state,
+                    "confidence": t.confidence,
+                    "bbox": t.bbox(),
                 }
-                for t in targets
+                for t in tracks
             ],
         }
-
-    def _bbox(self, target: dict, settings) -> dict:
-        """Normalise a square target to the frame, so it stays square once scaled."""
-        short_edge = min(settings.camera_width, settings.camera_height)
-        width = target["size"] * short_edge / settings.camera_width
-        height = target["size"] * short_edge / settings.camera_height
-        return {
-            "x": round(_clamp(target["cx"] - width / 2, 0.0, 1.0), 4),
-            "y": round(_clamp(target["cy"] - height / 2, 0.0, 1.0), 4),
-            "w": round(width, 4),
-            "h": round(height, 4),
-        }
-
-    def _bbox_text(self, target: dict, settings) -> str:
-        box = self._bbox(target, settings)
-        return f"{box['x']},{box['y']},{box['w']},{box['h']}"
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))

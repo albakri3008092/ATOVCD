@@ -64,6 +64,8 @@
           <div class="kv"><span>IMU / Gimbal</span><b id="hp-imu">—</b></div>
           <div class="kv"><span data-i="battery">Bateri</span><b id="hp-batt">—</b></div>
           <div class="kv"><span data-i="fps">Kadar bingkai</span><b id="hp-fps">—</b></div>
+          <div class="kv"><span data-i="ai_engine">Enjin AI</span><b id="hp-ai">—</b></div>
+          <div class="kv"><span data-i="ai_latency">Masa inferens</span><b id="hp-lat">—</b></div>
         </div>
       </div>
     </div>
@@ -154,6 +156,13 @@
           <input class="input" type="number" step="0.05" min="0.05" max="0.99" name="detection_confidence"/></label>
         <label><span data-i="s_sens">Kepekaan perubahan</span>
           <input class="input" type="number" step="0.05" min="0.05" max="0.99" name="change_sensitivity"/></label>
+        <label><span data-i="s_engine">Enjin pengesanan</span>
+          <select name="detector_mode" class="input">
+            <option value="opencv">OpenCV (CPU)</option>
+            <option value="hailo">Hailo AI HAT+</option>
+            <option value="simulate">Simulasi</option>
+          </select>
+        </label>
       </div>
       <div class="panel">
         <div class="panel-head" data-i="s_net">RANGKAIAN &amp; STORAN</div>
