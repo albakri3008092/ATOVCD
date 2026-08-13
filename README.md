@@ -113,6 +113,11 @@ Point the tablet at `http://<pi-ip>:8000/` on the Pi's Wi-Fi AP (SSID configured
 in the SETTINGS tab is the operator-facing record; the AP itself is set up with
 `hostapd`/NetworkManager on the Pi).
 
+Full field deployment — OS, AI HAT+, `systemd` autostart
+([`deploy/atovcd.service`](deploy/atovcd.service)), the Wi-Fi AP, a pre-operation
+checklist and troubleshooting — is in
+[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
