@@ -97,6 +97,10 @@ sebenar yang digunakan pada panel LIVE (`HAILO` vs `OPENCV`).
 
 ```bash
 sudo useradd -r -s /usr/sbin/nologin atovcd || true
+# Akaun sistem tiada akses kamera secara lalai — tanpa baris ini LIVE akan
+# tunjuk SYNTHETIC walaupun kamera berfungsi semasa ujian manual.
+sudo usermod -aG video,render atovcd
+getent group hailo >/dev/null && sudo usermod -aG hailo atovcd   # jika guna AI HAT+
 sudo chown -R atovcd:atovcd /opt/atovcd
 sudo cp /opt/atovcd/deploy/atovcd.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -123,7 +127,8 @@ cd /opt/atovcd && sudo -u atovcd git pull && sudo systemctl restart atovcd
 Bookworm menggunakan NetworkManager, jadi AP boleh dibina tanpa `hostapd`:
 
 ```bash
-sudo nmcli device wifi hotspot ifname wlan0 ssid ATOVCD-FIELD password "atovcd12345"
+read -rsp 'Kata laluan AP (>= 12 aksara, jangan guna semula): ' AP_PASS && echo
+sudo nmcli device wifi hotspot ifname wlan0 ssid ATOVCD-FIELD password "$AP_PASS"
 sudo nmcli connection modify Hotspot connection.autoconnect yes \
   connection.autoconnect-priority 100 \
   ipv4.method shared ipv4.addresses 192.168.50.1/24
@@ -131,7 +136,10 @@ sudo nmcli connection up Hotspot
 ```
 
 - Tablet: sambung ke SSID `ATOVCD-FIELD`, buka `http://192.168.50.1:8000/`.
-- Kata laluan mesti ≥ 8 aksara; tukar sebelum operasi sebenar.
+- Konsol **tiada log masuk** — sesiapa dalam liputan radio yang tahu kata laluan AP
+  boleh guna UI dan API sepenuhnya. Jangan guna kata laluan contoh atau kata laluan
+  yang dikongsi; tetapkan yang unik bagi setiap set peralatan.
+- Panjang minimum WPA2 ialah 8 aksara; gunakan ≥ 12 untuk operasi sebenar.
 - Semasa AP aktif, Pi tiada internet. Untuk kemas kini, matikan sementara:
   `sudo nmcli connection down Hotspot`.
 
@@ -154,7 +162,8 @@ screen*) supaya ia dibuka seperti aplikasi.
 
 | Gejala | Sebab / tindakan |
 |---|---|
-| LIVE tunjuk `SYNTHETIC` | `picamera2` tiada dalam venv → cipta semula venv dengan `--system-site-packages` |
+| LIVE tunjuk `SYNTHETIC` semasa ujian manual | `picamera2` tiada dalam venv → cipta semula venv dengan `--system-site-packages` |
+| LIVE tunjuk `SYNTHETIC` hanya selepas autostart | pengguna `atovcd` tiada dalam kumpulan `video`/`render` → `sudo usermod -aG video,render atovcd` dan `sudo systemctl restart atovcd` |
 | `Enjin AI = OPENCV` walaupun pilih Hailo | `.hef` tiada atau `hailo-all` belum dipasang — lihat `journalctl -u atovcd` |
 | Strim tersekat-sekat | turunkan resolusi/fps di SETTINGS; pastikan fan berfungsi (`vcgencmd measure_temp`) |
 | Tablet tak dapat sambung | pastikan `Hotspot` aktif (`nmcli connection show --active`) dan guna IP, bukan `.local` |
