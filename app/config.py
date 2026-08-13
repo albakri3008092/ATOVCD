@@ -1,10 +1,13 @@
 """Runtime settings for the ATOVCD server, persisted as JSON."""
 
+import contextlib
 import json
 import os
 import threading
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+
+DETECTOR_MODES = ("opencv", "hailo", "simulate")
 
 DATA_DIR = Path(os.environ.get("ATOVCD_DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 SETTINGS_PATH = DATA_DIR / "settings.json"
@@ -19,6 +22,7 @@ class Settings:
     frame_rate: int = 12
     detection_confidence: float = 0.55
     change_sensitivity: float = 0.50
+    detector_mode: str = os.environ.get("ATOVCD_DETECTOR", "opencv")
     storage_limit_mb: int = 2048
     wifi_ssid: str = "ATOVCD_FIELD"
     wifi_channel: int = 6
@@ -41,6 +45,8 @@ class Settings:
         self.change_sensitivity = min(0.99, max(0.05, self.change_sensitivity))
         self.camera_width = max(320, min(1920, self.camera_width))
         self.camera_height = max(180, min(1080, self.camera_height))
+        if self.detector_mode not in DETECTOR_MODES:
+            self.detector_mode = "opencv"
 
 
 def _as_bool(value) -> bool:
@@ -61,10 +67,8 @@ class SettingsStore:
     def _load(self) -> None:
         if not self._path.exists():
             return
-        try:
+        with contextlib.suppress(OSError, json.JSONDecodeError):
             self._settings.merge(json.loads(self._path.read_text()))
-        except (OSError, json.JSONDecodeError):
-            pass
 
     def get(self) -> Settings:
         with self._lock:

@@ -99,7 +99,7 @@ class Database:
             params = (session_id,)
         query += " ORDER BY ts DESC, id DESC LIMIT ?"
         with self._lock:
-            return self._conn.execute(query, params + (limit,)).fetchall()
+            return self._conn.execute(query, (*params, limit)).fetchall()
 
     def counts(self, session_id: int) -> dict[str, int]:
         with self._lock:

@@ -3,7 +3,7 @@
    ===================================================================== */
 'use strict';
 
-const STATE_CLASS = { NEW: 'new', OLD: 'old', UNCERTAIN: 'unc', DETECTED: 'det' };
+const STATE_CLASS = { NEW: 'new', OLD: 'old', UNCERTAIN: 'unc', DETECTED: 'det', IDLE: 'old' };
 const POLL_MS = 700;
 
 const $ = (id) => document.getElementById(id);
@@ -96,10 +96,12 @@ function renderLive(status) {
     .join('');
 
   $('cam-res').textContent = `${status.camera.width}×${status.camera.height} @ ${status.camera.fps}fps`;
-  $('hp-camera').textContent = status.camera.status;
   $('hp-imu').textContent = `${status.imu.status} · P${status.imu.pitch}° R${status.imu.roll}°`;
   $('hp-batt').textContent = status.battery.monitored ? `${status.battery.percent}%` : '—';
   $('hp-fps').textContent = `${status.camera.fps} fps`;
+  $('hp-ai').textContent = `${status.ai.backend} · ${status.ai.status} · ${status.ai.detections}`;
+  $('hp-lat').textContent = `${status.ai.latency_ms} ms`;
+  $('hp-camera').textContent = `${status.camera.status} · ${status.camera.source}`;
 
   $('c-new').textContent = pad(status.counts.new);
   $('c-old').textContent = pad(status.counts.old);
@@ -198,6 +200,7 @@ async function loadSettings() {
   form.frame_rate.value = settings.frame_rate;
   form.detection_confidence.value = settings.detection_confidence;
   form.change_sensitivity.value = settings.change_sensitivity;
+  form.detector_mode.value = settings.detector_mode;
   form.wifi_ssid.value = settings.wifi_ssid;
   form.wifi_channel.value = settings.wifi_channel;
   form.storage_limit_mb.value = settings.storage_limit_mb;
@@ -217,6 +220,7 @@ async function saveSettings(event) {
       frame_rate: Number(form.frame_rate.value),
       detection_confidence: Number(form.detection_confidence.value),
       change_sensitivity: Number(form.change_sensitivity.value),
+      detector_mode: form.detector_mode.value,
       wifi_ssid: form.wifi_ssid.value,
       wifi_channel: Number(form.wifi_channel.value),
       storage_limit_mb: Number(form.storage_limit_mb.value),

@@ -11,16 +11,18 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, report
-from .camera import build_camera
+from .camera import build_camera, encode_jpeg
 from .config import store as settings_store
 from .db import db
 from .engine import Engine
+from .scene import Scene
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 TICK_HZ = 4
 
-engine = Engine(db, settings_store)
-camera = build_camera()
+scene = Scene()
+camera = build_camera(scene)
+engine = Engine(db, settings_store, camera, scene)
 
 
 @asynccontextmanager
@@ -123,9 +125,9 @@ async def api_report(
 
 
 @app.get("/api/stream.mjpg")
-async def api_stream() -> StreamingResponse:
+async def api_stream(request: Request) -> StreamingResponse:
     return StreamingResponse(
-        _mjpeg_frames(),
+        _mjpeg_frames(request),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={"Cache-Control": "no-store"},
     )
@@ -133,17 +135,23 @@ async def api_stream() -> StreamingResponse:
 
 @app.get("/api/snapshot.jpg")
 async def api_snapshot() -> Response:
-    frame = await asyncio.to_thread(camera.jpeg, settings_store.get(), engine.targets())
+    frame = await asyncio.to_thread(_jpeg, settings_store.get())
     return Response(frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
-async def _mjpeg_frames():
-    while True:
+async def _mjpeg_frames(request: Request):
+    # Abandoned streams must end themselves: a tablet browser only allows a few
+    # connections per host, and lingering ones starve the status polling.
+    while not await request.is_disconnected():
         settings = settings_store.get()
-        frame = await asyncio.to_thread(camera.jpeg, settings, engine.targets())
+        frame = await asyncio.to_thread(_jpeg, settings)
         yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
         yield str(len(frame)).encode() + b"\r\n\r\n" + frame + b"\r\n"
         await asyncio.sleep(1 / max(1, settings.frame_rate))
+
+
+def _jpeg(settings) -> bytes:
+    return encode_jpeg(camera.frame(settings))
 
 
 def _events(session_id: int, limit: int) -> list[dict]:

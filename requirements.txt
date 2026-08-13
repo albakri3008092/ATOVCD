@@ -1,3 +1,5 @@
 fastapi>=0.115,<0.142
 uvicorn>=0.30,<0.53
 pillow>=10.4,<12
+numpy>=1.26,<3
+opencv-python-headless>=4.9,<5.1

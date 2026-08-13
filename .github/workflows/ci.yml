@@ -27,17 +27,44 @@ jobs:
         run: pip install -r requirements.txt ruff
       - name: Lint server
         run: |
-          ruff check app --line-length 110
-          ruff format --check --line-length 110 app
+          ruff check app
+          ruff format --check app
       - name: Byte-compile server
         run: python -m compileall -q app
+      - name: Detector smoke test (OpenCV on the synthetic scene)
+        run: |
+          python - <<'PY'
+          from app.config import Settings
+          from app.detect import build_detector
+          from app.camera import build_camera
+          from app.scene import Scene
+          from app.tracking import Tracker
+
+          scene, settings = Scene(), Settings()
+          camera = build_camera(scene)
+          detector = build_detector("opencv", scene)
+          tracker = Tracker()
+          seen = 0
+          for _ in range(6):
+              detections = detector.detect(camera.frame(settings), settings)
+              tracker.update(detections, settings.detection_confidence)
+              seen = max(seen, len(detections))
+          assert seen >= 2, f"opencv detector found only {seen} objects"
+          assert tracker.tracks, "tracker produced no targets"
+
+          fallback = build_detector("hailo", scene)
+          assert fallback.mode == "opencv", "hailo must degrade to opencv without a model"
+          print("detector ok:", seen, "objects,", len(tracker.tracks), "targets")
+          PY
       - name: Start server and smoke test every endpoint
         run: |
           python -m uvicorn app.main:app --port 8000 &
           SERVER_PID=$!
           for i in $(seq 1 20); do curl -fsS http://localhost:8000/api/status >/dev/null && break; sleep 1; done
           curl -fsS http://localhost:8000/ > /dev/null
-          curl -fsS http://localhost:8000/api/status | head -c 200; echo
+          curl -fsS http://localhost:8000/api/status | tee status.json | head -c 300; echo
+          grep -q '"backend": *"OPENCV"' status.json
+          grep -q '"status": *"READY"' status.json
           curl -fsS -X POST http://localhost:8000/api/session/start
           sleep 3
           curl -fsS "http://localhost:8000/api/history?limit=5" > /dev/null
@@ -49,5 +76,12 @@ jobs:
           test -s frame.jpg
           curl -fsS -X PUT http://localhost:8000/api/settings \
             -H 'Content-Type: application/json' -d '{"frame_rate":8}' | grep -q '"frame_rate":8'
+          curl -fsS -X PUT http://localhost:8000/api/settings \
+            -H 'Content-Type: application/json' \
+            -d '{"detector_mode":"simulate"}' | grep -q '"detector_mode":"simulate"'
+          sleep 2
+          curl -fsS http://localhost:8000/api/status | grep -q '"backend": *"SIMULATED"'
+          curl -fsS -X PUT http://localhost:8000/api/settings \
+            -H 'Content-Type: application/json' -d '{"detector_mode":"opencv"}' > /dev/null
           curl -fsS -X POST http://localhost:8000/api/session/stop
           kill $SERVER_PID
