@@ -1,0 +1,20 @@
+[Unit]
+Description=ATOVCD operator console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=atovcd
+WorkingDirectory=/opt/atovcd
+Environment=ATOVCD_CAMERA=picamera2
+Environment=ATOVCD_DETECTOR=opencv
+# AI HAT+: swap the line above for the two below.
+# Environment=ATOVCD_DETECTOR=hailo
+# Environment=ATOVCD_HAILO_HEF=/usr/share/hailo-models/yolov8s_h8l.hef
+ExecStart=/opt/atovcd/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

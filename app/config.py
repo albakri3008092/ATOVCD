@@ -65,10 +65,14 @@ class SettingsStore:
         self._load()
 
     def _load(self) -> None:
-        if not self._path.exists():
-            return
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            self._settings.merge(json.loads(self._path.read_text()))
+        if self._path.exists():
+            with contextlib.suppress(OSError, json.JSONDecodeError):
+                self._settings.merge(json.loads(self._path.read_text()))
+        # The deployer's environment outranks a stored operator choice: on the Pi the
+        # detector is wired to the hardware present (AI HAT+ or not), same as ATOVCD_CAMERA.
+        env_detector = os.environ.get("ATOVCD_DETECTOR", "")
+        if env_detector in DETECTOR_MODES:
+            self._settings.merge({"detector_mode": env_detector})
 
     def get(self) -> Settings:
         with self._lock:

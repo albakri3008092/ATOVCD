@@ -29,8 +29,9 @@ synthetic scene if `picamera2` is missing.
 
 ## Detection engines
 
-The detector is selected in SETTINGS → *Detection engine* (or at startup with
-`ATOVCD_DETECTOR`), and every backend returns frame-normalised boxes, so the
+The detector is selected in SETTINGS → *Detection engine*, or pinned to the
+deployed hardware with `ATOVCD_DETECTOR`, which overrides the persisted operator
+choice at startup. Every backend returns frame-normalised boxes, so the
 tracker, API, history and reports are identical for all three:
 
 | Mode | What it does |
@@ -112,6 +113,11 @@ ATOVCD_CAMERA=picamera2 ATOVCD_DETECTOR=hailo \
 Point the tablet at `http://<pi-ip>:8000/` on the Pi's Wi-Fi AP (SSID configured
 in the SETTINGS tab is the operator-facing record; the AP itself is set up with
 `hostapd`/NetworkManager on the Pi).
+
+Full field deployment — OS, AI HAT+, `systemd` autostart
+([`deploy/atovcd.service`](deploy/atovcd.service)), the Wi-Fi AP, a pre-operation
+checklist and troubleshooting — is in
+[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia).
 
 ## License
 
