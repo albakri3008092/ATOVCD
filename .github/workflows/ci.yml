@@ -56,6 +56,23 @@ jobs:
           assert fallback.mode == "opencv", "hailo must degrade to opencv without a model"
           print("detector ok:", seen, "objects,", len(tracker.tracks), "targets")
           PY
+      - name: ATOVCD_DETECTOR overrides the persisted detector
+        run: |
+          python - <<'PY'
+          import json, os, pathlib
+          from app.config import SettingsStore
+
+          path = pathlib.Path("/tmp/ci-settings.json")
+          path.write_text(json.dumps({"detector_mode": "simulate"}))
+          assert SettingsStore(path).get().detector_mode == "simulate"
+
+          os.environ["ATOVCD_DETECTOR"] = "hailo"
+          assert SettingsStore(path).get().detector_mode == "hailo", "env must win at startup"
+
+          os.environ["ATOVCD_DETECTOR"] = "nonsense"
+          assert SettingsStore(path).get().detector_mode == "simulate", "typo must not clobber"
+          print("detector precedence ok")
+          PY
       - name: Start server and smoke test every endpoint
         run: |
           python -m uvicorn app.main:app --port 8000 &

@@ -29,8 +29,9 @@ synthetic scene if `picamera2` is missing.
 
 ## Detection engines
 
-The detector is selected in SETTINGS → *Detection engine* (or at startup with
-`ATOVCD_DETECTOR`), and every backend returns frame-normalised boxes, so the
+The detector is selected in SETTINGS → *Detection engine*, or pinned to the
+deployed hardware with `ATOVCD_DETECTOR`, which overrides the persisted operator
+choice at startup. Every backend returns frame-normalised boxes, so the
 tracker, API, history and reports are identical for all three:
 
 | Mode | What it does |

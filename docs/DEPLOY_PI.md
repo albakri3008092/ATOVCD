@@ -116,6 +116,11 @@ Untuk menghidupkan AI HAT+, edit `/etc/systemd/system/atovcd.service`
 sudo systemctl daemon-reload && sudo systemctl restart atovcd
 ```
 
+`ATOVCD_DETECTOR` dalam unit itu **mengatasi** pilihan yang disimpan dari tab
+SETTINGS setiap kali servis dimulakan. Jika anda mahu operator bebas menukar enjin
+melalui SETTINGS, buang baris `Environment=ATOVCD_DETECTOR=...` daripada unit
+(nilai lalai kekal `opencv`).
+
 Kemas kini versi:
 
 ```bash
