@@ -1,8 +1,10 @@
 """ATOVCD FastAPI server: REST API + MJPEG stream + tablet dashboard."""
 
 import asyncio
+import contextlib
 import json
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +21,11 @@ from .scene import Scene
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 TICK_HZ = 4
+# Browsers cap connections per host (6 in Chrome). Keep well under it so a
+# stream that outlives its <img> can never starve the status polling.
+MAX_STREAMS = 2
+
+_streams: deque[asyncio.Event] = deque()
 
 scene = Scene()
 camera = build_camera(scene)
@@ -140,14 +147,23 @@ async def api_snapshot() -> Response:
 
 
 async def _mjpeg_frames(request: Request):
-    # Abandoned streams must end themselves: a tablet browser only allows a few
-    # connections per host, and lingering ones starve the status polling.
-    while not await request.is_disconnected():
-        settings = settings_store.get()
-        frame = await asyncio.to_thread(_jpeg, settings)
-        yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
-        yield str(len(frame)).encode() + b"\r\n\r\n" + frame + b"\r\n"
-        await asyncio.sleep(1 / max(1, settings.frame_rate))
+    # An abandoned stream is not always noticed: re-pointing the <img> src leaves
+    # the old response half-open, and `is_disconnected()` only reports it once the
+    # peer actually closes. Retiring the oldest stream keeps that bounded.
+    stop = asyncio.Event()
+    _streams.append(stop)
+    while len(_streams) > MAX_STREAMS:
+        _streams.popleft().set()
+    try:
+        while not stop.is_set() and not await request.is_disconnected():
+            settings = settings_store.get()
+            frame = await asyncio.to_thread(_jpeg, settings)
+            yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+            yield str(len(frame)).encode() + b"\r\n\r\n" + frame + b"\r\n"
+            await asyncio.sleep(1 / max(1, settings.frame_rate))
+    finally:
+        with contextlib.suppress(ValueError):
+            _streams.remove(stop)
 
 
 def _jpeg(settings) -> bytes:
