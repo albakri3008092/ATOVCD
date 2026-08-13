@@ -125,9 +125,9 @@ async def api_report(
 
 
 @app.get("/api/stream.mjpg")
-async def api_stream() -> StreamingResponse:
+async def api_stream(request: Request) -> StreamingResponse:
     return StreamingResponse(
-        _mjpeg_frames(),
+        _mjpeg_frames(request),
         media_type="multipart/x-mixed-replace; boundary=frame",
         headers={"Cache-Control": "no-store"},
     )
@@ -139,8 +139,10 @@ async def api_snapshot() -> Response:
     return Response(frame, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
-async def _mjpeg_frames():
-    while True:
+async def _mjpeg_frames(request: Request):
+    # Abandoned streams must end themselves: a tablet browser only allows a few
+    # connections per host, and lingering ones starve the status polling.
+    while not await request.is_disconnected():
         settings = settings_store.get()
         frame = await asyncio.to_thread(_jpeg, settings)
         yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "

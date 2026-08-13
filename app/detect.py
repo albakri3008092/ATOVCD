@@ -214,18 +214,23 @@ class SimulatedDetector:
         self._rng = random.Random(20260811)
 
     def detect(self, frame: np.ndarray | None, settings: Settings) -> list[Detection]:
+        # Marker size is a fraction of the short edge, so each axis is normalised
+        # against its own frame dimension — otherwise a square marker renders as a
+        # box stretched by the frame's aspect ratio.
+        short_edge = min(settings.camera_width, settings.camera_height)
         detections = []
         for marker in self._scene.markers():
-            size = marker["size"]
+            width = marker["size"] * short_edge / settings.camera_width
+            height = marker["size"] * short_edge / settings.camera_height
             confidence = _clamp01(0.72 + self._rng.uniform(-0.28, 0.27))
             detections.append(
                 Detection(
                     label="OBJECT",
                     confidence=round(confidence, 2),
-                    x=_clamp01(marker["cx"] - size / 2),
-                    y=_clamp01(marker["cy"] - size / 2),
-                    w=size,
-                    h=size,
+                    x=_clamp01(marker["cx"] - width / 2),
+                    y=_clamp01(marker["cy"] - height / 2),
+                    w=width,
+                    h=height,
                 )
             )
         return detections
