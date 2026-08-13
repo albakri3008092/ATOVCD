@@ -229,7 +229,15 @@ async function saveSettings(event) {
   });
   $('settings-hint').textContent = window.t('saved');
   await loadSettings();
-  $('stream').src = `/api/stream.mjpg?ts=${Date.now()}`;
+  restartStream();
+}
+
+// Dropping the src first aborts the previous MJPEG response; re-pointing it
+// directly leaves the old connection open against the browser's per-host cap.
+function restartStream() {
+  const image = $('stream');
+  image.removeAttribute('src');
+  image.src = `/api/stream.mjpg?ts=${Date.now()}`;
 }
 
 /* -------------------------------------------------------------- session */
@@ -296,7 +304,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderSessionButton();
   });
 
-  $('stream').src = '/api/stream.mjpg';
+  restartStream();
   await loadSettings();
   renderSessionButton();
   await tick();
