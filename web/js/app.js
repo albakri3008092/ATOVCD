@@ -5,6 +5,8 @@
 
 const STATE_CLASS = { NEW: 'new', OLD: 'old', UNCERTAIN: 'unc', DETECTED: 'det', IDLE: 'old' };
 const POLL_MS = 700;
+const STREAM_WATCH_MS = 1500;
+const STREAM_STALL_LIMIT = 3; // ~4.5 s of an unchanging picture counts as frozen
 
 const $ = (id) => document.getElementById(id);
 const stateClass = (s) => STATE_CLASS[s] || 'det';
@@ -13,6 +15,9 @@ let currentView = 'live';
 let activeSession = null;
 let historySelection = '';
 let reportSelection = '';
+let streamSignature = '';
+let streamStalls = 0;
+const probe = Object.assign(document.createElement('canvas'), { width: 32, height: 18 });
 
 /* ------------------------------------------------------------ utilities */
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -238,6 +243,30 @@ function restartStream() {
   const image = $('stream');
   image.removeAttribute('src');
   image.src = `/api/stream.mjpg?ts=${Date.now()}`;
+  streamSignature = '';
+  streamStalls = 0;
+}
+
+// A stream the server ended (or the browser stopped painting) leaves the last
+// frame on screen forever: the picture looks live while the boxes drift off the
+// targets. Sample the picture and re-request it once it stops moving.
+function watchStream() {
+  const image = $('stream');
+  if (!image.naturalWidth) return;
+  probe.getContext('2d').drawImage(image, 0, 0, probe.width, probe.height);
+  let signature = '';
+  try {
+    signature = probe.getContext('2d').getImageData(0, 0, probe.width, probe.height).data.join(',');
+  } catch (err) {
+    return; // no readback available; leave the picture alone
+  }
+  if (signature !== streamSignature) {
+    streamSignature = signature;
+    streamStalls = 0;
+    return;
+  }
+  streamStalls += 1;
+  if (streamStalls >= STREAM_STALL_LIMIT) restartStream();
 }
 
 /* -------------------------------------------------------------- session */
@@ -309,4 +338,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSessionButton();
   await tick();
   setInterval(tick, POLL_MS);
+  setInterval(watchStream, STREAM_WATCH_MS);
 });
