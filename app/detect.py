@@ -33,6 +33,13 @@ log = logging.getLogger(__name__)
 
 MODES = ("opencv", "hailo", "simulate")
 
+# A range can raise more boards than a single frame used to report: 15 pop-up
+# targets plus stray objects must all survive the per-frame cut.
+MAX_DETECTIONS = 24
+# Background learning rate. Slow enough that a target that stays up keeps a
+# non-zero change score for ~15 s instead of melting into the background in ~4 s.
+BACKGROUND_ALPHA = 0.02
+
 
 @dataclass(frozen=True)
 class Detection:
@@ -83,13 +90,15 @@ class OpenCVDetector:
         detections: list[Detection] = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if not frame_area * 0.0015 < area < frame_area * 0.40:
+            if not frame_area * 0.0008 < area < frame_area * 0.40:
                 continue
             x, y, w, h = cv2.boundingRect(contour)
-            if w < 8 or h < 8:
+            if w < 6 or h < 6:
                 continue
             aspect = w / float(h)
-            if not 0.35 < aspect < 2.9:
+            # Upright target boards are taller than wide, so the lower bound has
+            # to admit narrow silhouettes seen from a distance.
+            if not 0.22 < aspect < 2.9:
                 continue
             fill = area / float(w * h)
             if fill < 0.45:  # long thin structures (horizon, poles) are not objects
@@ -110,7 +119,7 @@ class OpenCVDetector:
                 )
             )
         detections.sort(key=lambda d: d.confidence, reverse=True)
-        return detections[:12]
+        return detections[:MAX_DETECTIONS]
 
     def _update_background(self, blurred: np.ndarray) -> np.ndarray:
         """Return |frame - background| and fold the frame into the background."""
@@ -119,7 +128,7 @@ class OpenCVDetector:
             self._background = current.copy()
             return np.zeros_like(current)
         delta = cv2.absdiff(current, self._background)
-        cv2.accumulateWeighted(current, self._background, 0.06)
+        cv2.accumulateWeighted(current, self._background, BACKGROUND_ALPHA)
         return delta
 
 
@@ -194,7 +203,7 @@ class HailoDetector:
                         )
                     )
         detections.sort(key=lambda d: d.confidence, reverse=True)
-        return detections[:12]
+        return detections[:MAX_DETECTIONS]
 
     def _label(self, class_id: int) -> str:
         if class_id < len(self._labels):

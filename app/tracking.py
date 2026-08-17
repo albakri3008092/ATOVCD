@@ -19,8 +19,12 @@ from dataclasses import dataclass, field
 
 from .detect import Detection
 
-CONFIRM_HITS = 4  # sightings before a NEW target counts as part of the scene
-LOST_TICKS = 6  # consecutive misses before a target is called OLD
+# Tuned for pop-up target boards, which can be up for barely a second: at the
+# engine's 4 Hz tick a board is confirmed after ~0.5 s and called OLD ~0.75 s
+# after it drops, so a short exposure still produces a NEW -> DETECTED -> OLD
+# trail instead of never leaving NEW.
+CONFIRM_HITS = 2  # sightings before a NEW target counts as part of the scene
+LOST_TICKS = 3  # consecutive misses before a target is called OLD
 DROP_TICKS = 24  # consecutive misses before a target is forgotten
 MIN_IOU = 0.15
 
