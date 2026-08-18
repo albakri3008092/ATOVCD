@@ -18,6 +18,7 @@ let reportSelection = '';
 let streamSignature = '';
 let streamStalls = 0;
 const probe = Object.assign(document.createElement('canvas'), { width: 32, height: 18 });
+const probeCtx = probe.getContext('2d', { willReadFrequently: true });
 
 /* ------------------------------------------------------------ utilities */
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -247,19 +248,14 @@ function restartStream() {
   streamStalls = 0;
 }
 
-// A stream the server ended (or the browser stopped painting) leaves the last
-// frame on screen forever: the picture looks live while the boxes drift off the
-// targets. Sample the picture and re-request it once it stops moving.
+// A broken stream leaves the operator with a picture that lies while the rest of
+// the UI stays live: either the last frame stays on screen forever, or the image
+// goes blank. Both count as a stall, and neither raises anything the page would
+// otherwise notice, so the picture itself is the only reliable signal.
 function watchStream() {
   const image = $('stream');
-  if (!image.naturalWidth) return;
-  probe.getContext('2d').drawImage(image, 0, 0, probe.width, probe.height);
-  let signature = '';
-  try {
-    signature = probe.getContext('2d').getImageData(0, 0, probe.width, probe.height).data.join(',');
-  } catch (err) {
-    return; // no readback available; leave the picture alone
-  }
+  const signature = image.naturalWidth ? streamPixels(image) : 'blank';
+  if (signature === null) return; // no readback available; leave the picture alone
   if (signature !== streamSignature) {
     streamSignature = signature;
     streamStalls = 0;
@@ -267,6 +263,20 @@ function watchStream() {
   }
   streamStalls += 1;
   if (streamStalls >= STREAM_STALL_LIMIT) restartStream();
+}
+
+// Cheap checksum of a downscaled copy of the frame; sensor noise makes a live
+// picture differ every time, so equality means nothing moved at all.
+function streamPixels(image) {
+  probeCtx.drawImage(image, 0, 0, probe.width, probe.height);
+  let sum = 0;
+  try {
+    const { data } = probeCtx.getImageData(0, 0, probe.width, probe.height);
+    for (let i = 0; i < data.length; i += 1) sum = (sum * 31 + data[i]) % 4294967291;
+  } catch (err) {
+    return null;
+  }
+  return String(sum);
 }
 
 /* -------------------------------------------------------------- session */
