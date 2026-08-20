@@ -46,6 +46,23 @@ the visual-change state: first confident sighting → `NEW`, seen consistently �
 `OLD`. `Change sensitivity` controls how aggressively the OpenCV backend accepts
 weak edges; `Confidence threshold` is the `UNCERTAIN` cut-off.
 
+## Helmet attitude (IMU)
+
+`/api/status.imu` reports pitch/roll/yaw for the LIVE health panel. The source is
+selected with `ATOVCD_IMU`; a sensor that cannot be opened or that stops
+answering never takes the console down — the reading degrades to simulated
+values and the status field says so:
+
+| Mode | Sensor | Yaw | `status` |
+|---|---|---|---|
+| `simulate` (default) | none, synthetic sweep | relative | `SIMULATED` |
+| `mpu6050` | MPU-6050 over I2C — accelerometer pitch/roll, gyro-integrated yaw | relative, drifts (no magnetometer) | `LOCKED`, `FAULT` on a read error |
+| `bno085` | BNO085 over I2C — on-chip fusion, quaternion | absolute heading | `LOCKED`, `FAULT` on a read error |
+
+`mpu6050` needs `smbus2`; `bno085` needs `adafruit-circuitpython-bno08x`. Neither
+is in `requirements.txt` because they only install usefully on a Pi — add the one
+you wire up. Not validated against physical sensors yet.
+
 ## Screens
 
 | Tab | Purpose |

@@ -127,6 +127,31 @@ Kemas kini versi:
 cd /opt/atovcd && sudo -u atovcd git pull && sudo systemctl restart atovcd
 ```
 
+### 5b. IMU sebenar (pilihan)
+
+Tanpa sensor, panel IMU pada tab LIVE menunjukkan telemetri simulasi
+(`SIMULATED`). Untuk bacaan sebenar, sambung sensor ke I2C Pi 5 (SDA = GPIO2 pin 3,
+SCL = GPIO3 pin 5, 3V3 pin 1, GND pin 6), hidupkan I2C melalui
+`sudo raspi-config` → *Interface Options* → *I2C*, kemudian:
+
+```bash
+# MPU-6050 (murah, tiada magnetometer — yaw hanyut/relatif)
+sudo -u atovcd /opt/atovcd/.venv/bin/pip install smbus2
+i2cdetect -y 1        # patut tunjuk 68
+
+# BNO085 (fusion dalam cip — yaw mutlak, lebih stabil)
+sudo -u atovcd /opt/atovcd/.venv/bin/pip install adafruit-circuitpython-bno08x
+```
+
+Kemudian tambah satu baris pada unit systemd — `Environment=ATOVCD_IMU=mpu6050`
+atau `ATOVCD_IMU=bno085` — dan `sudo systemctl daemon-reload && sudo systemctl
+restart atovcd`. Jika sensor tercabut atau gagal dibaca, servis **tidak** akan
+mati: panel bertukar ke `FAULT` dengan nilai simulasi, jadi operator nampak
+sensor itu bermasalah.
+
+Belum disahkan pada sensor fizikal — laluan kod dan degradasi sudah diuji, bacaan
+sebenar belum.
+
 ## 6. Wi-Fi AP (operasi tanpa internet)
 
 Bookworm menggunakan NetworkManager, jadi AP boleh dibina tanpa `hostapd`:
