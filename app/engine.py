@@ -6,7 +6,6 @@ the scripted simulator), folds the detections into the tracker and logs every
 visual-change transition against the active session.
 """
 
-import math
 import threading
 import time
 from time import perf_counter
@@ -14,6 +13,7 @@ from time import perf_counter
 from .config import SettingsStore
 from .db import Database
 from .detect import build_detector
+from .imu import build_imu
 from .scene import Scene
 from .tracking import Tracker
 
@@ -35,6 +35,7 @@ class Engine:
         self._session_id: int | None = None
         self._session_started: float | None = None
         self._tracker = Tracker()
+        self._imu = build_imu()
         self._latency_ms = 0.0
         self._detections = 0
         self._detector_error = ""
@@ -121,7 +122,7 @@ class Engine:
     def status(self) -> dict:
         settings = self._settings.get()
         with self._lock:
-            tick, session_id, started = self._tick, self._session_id, self._session_started
+            session_id, started = self._session_id, self._session_started
             tracks = list(self._tracker.tracks)
             detector, latency = self._detector, self._latency_ms
             detections, error = self._detections, self._detector_error
@@ -152,12 +153,7 @@ class Engine:
                 "latency_ms": latency,
                 "error": error,
             },
-            "imu": {
-                "status": "LOCKED",
-                "pitch": round(math.sin(tick * 0.05) * 4.2, 2),
-                "roll": round(math.cos(tick * 0.04) * 3.1, 2),
-                "yaw": round((tick * 0.35) % 360.0, 2),
-            },
+            "imu": {"source": self._imu.name, **self._imu.read()},
             "battery": {
                 "percent": max(8, 100 - int(uptime / 90)),
                 "monitored": settings.battery_monitoring,
