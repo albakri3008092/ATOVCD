@@ -41,22 +41,45 @@ Prinsip reka bentuk:
 
 ## Bahagian 1 — Senarai perkakasan
 
-| # | Item | Spesifikasi | Wajib | Harga (isi selepas beli) |
-|---|---|---|---|---|
-| 1 | Raspberry Pi 5 | 4 GB (8 GB jika guna Hailo + resolusi tinggi) | Ya | |
-| 2 | Kad microSD | ≥ 32 GB, kelas A2 | Ya | |
-| 3 | Kamera CSI | Camera Module 3 (atau setara) | Ya | |
-| 4 | Kabel CSI Pi 5 | 22-pin (Pi 5 guna penyambung kecil, **bukan** 15-pin lama) | Ya | |
-| 5 | Bekalan kuasa | Power bank USB-C PD 5 V / 5 A | Ya | |
-| 6 | Penyejuk aktif | Active Cooler rasmi Pi 5 | Ya | |
-| 7 | Casing / plat lekap | Untuk Pi pada vest, kamera pada helmet | Ya | |
-| 8 | Tali/velcro + cable tie | Pengikat kabel dan modul | Ya | |
-| 9 | Tablet | Android/iPad/Windows, Chrome atau Edge | Ya | |
-| 10 | AI HAT+ (Hailo-8L) | Pemecut AI | Tidak | |
-| 11 | Modul IMU (cth. MPU-6050) | Orientasi kepala, I2C | Tidak | |
+### 1.1 Wajib (sistem berfungsi penuh dengan item 1–9 sahaja)
 
+| # | Item | Model / spesifikasi tepat untuk dibeli | Harga (isi selepas beli) |
+|---|---|---|---|
+| 1 | Raspberry Pi 5 | Varian **4 GB**. Aplikasi ini guna < 1 GB RAM, jadi 8 GB tidak perlu | |
+| 2 | Kad microSD | **32 GB kelas A2** — SanDisk Extreme atau Samsung Pro Endurance | |
+| 3 | Kamera CSI | **Camera Module 3** (sensor IMX708, autofokus). Pilih varian **Wide (120°)** jika mahu liputan lapangan lebih luas, atau standard (75°) jika mahu sasaran jauh kelihatan lebih besar | |
+| 4 | Kabel CSI | **"Raspberry Pi 5 Camera Cable"** — 300 mm untuk kamera pada helmet dengan Pi berhampiran, **500 mm** jika Pi di vest | |
+| 5 | Bekalan kuasa (ujian meja) | Adapter USB-C rasmi Pi 5 **5 V / 5 A (27 W)** | |
+| 6 | Power bank (lapangan) | USB-C **PD 30 W ke atas** yang menyokong **5 V/5 A atau 9 V/3 A**; kapasiti ≥ 10 000 mAh | |
+| 7 | Penyejuk aktif | **Active Cooler rasmi Pi 5** (dengan kipas). Bukan pilihan — Pi 5 akan *throttle* tanpa kipas | |
+| 8 | Casing/plat lekap + velcro/cable tie | Pi pada vest, kamera pada helmet | |
+| 9 | Tablet | Android/iPad/Windows sedia ada, Chrome atau Edge — tiada aplikasi perlu dipasang | |
+
+### 1.2 Pilihan (boleh tambah kemudian tanpa mengubah kod)
+
+| # | Item | Model / spesifikasi tepat | Harga |
+|---|---|---|---|
+| 10 | Pemecut AI | **AI HAT+ 13 TOPS (Hailo-8L)** — cukup untuk kes guna ini. Versi 26 TOPS (Hailo-8) jauh lebih mahal tanpa faedah di sini | |
+| 11 | Modul IMU | **MPU-6050** (I2C, murah) atau **BNO085** jika mahu sudut lebih stabil | |
+
+> **Jangan beli yang ini (silap yang biasa):**
+>
+> | Jangan | Sebab |
+> |---|---|
+> | Raspberry Pi 4 | Tidak menyokong AI HAT+ (tiada PCIe) |
+> | Camera Module 2 (IMX219) | Tiada autofokus, kualiti jauh lebih rendah |
+> | Kabel CSI 15-pin Pi 4 | Pi 5 guna penyambung **22-pin halus** — kabel lama tidak masuk |
+> | Power bank 5 V/2.4 A biasa | Pi 5 akan reboot / beri amaran *under-voltage* semasa beban |
+> | Kad SD "Class 10" biasa | Terlalu perlahan untuk but + tulis rekod sesi |
+> | HAT lain bertindan atas AI HAT+ | AI HAT+ menguasai penyambung PCIe/GPIO Pi 5 |
+>
 > Kolum harga sengaja dikosongkan — isikan harga sebenar semasa pembelian untuk
 > jadual kos paper KIK. Jangan gunakan anggaran sebagai data rasmi.
+
+Item 10 dan 11 **tidak menghalang** sistem daripada berfungsi: mod pengesanan
+lalai `opencv` berjalan pada CPU Pi 5, dan nilai IMU/bateri pada dashboard kini
+adalah telemetri simulasi sehingga sensor sebenar disambung. Beli item 1–9
+dahulu, uji sistem, kemudian tambah AI HAT+ jika prestasi perlu ditingkatkan.
 
 Alat yang diperlukan: pemutar skru kecil (M2.5), gunting, pita dua muka
 berkekuatan tinggi, dan komputer untuk menulis kad SD.
