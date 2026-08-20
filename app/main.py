@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import json
 import time
-from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,8 +23,24 @@ TICK_HZ = 4
 # Browsers cap connections per host (6 in Chrome). Keep well under it so a
 # stream that outlives its <img> can never starve the status polling.
 MAX_STREAMS = 2
+# Hard ceiling: below the browser's per-host cap even if every stream looks busy.
+HARD_MAX_STREAMS = 4
+# A stream nobody is reading stops draining its socket, so its frame clock stops
+# advancing. That is what marks it abandoned — not the fact that it is the oldest.
+STREAM_STALL_S = 2.0
 
-_streams: deque[asyncio.Event] = deque()
+_streams: list["_Stream"] = []
+
+
+class _Stream:
+    """One open MJPEG response and when it last managed to deliver a frame."""
+
+    __slots__ = ("last_frame", "stop")
+
+    def __init__(self) -> None:
+        self.stop = asyncio.Event()
+        self.last_frame = time.monotonic()
+
 
 scene = Scene()
 camera = build_camera(scene)
@@ -149,21 +164,38 @@ async def api_snapshot() -> Response:
 async def _mjpeg_frames(request: Request):
     # An abandoned stream is not always noticed: re-pointing the <img> src leaves
     # the old response half-open, and `is_disconnected()` only reports it once the
-    # peer actually closes. Retiring the oldest stream keeps that bounded.
-    stop = asyncio.Event()
-    _streams.append(stop)
-    while len(_streams) > MAX_STREAMS:
-        _streams.popleft().set()
+    # peer actually closes. So streams are capped — but by retiring the one that
+    # stopped delivering, because a browser opens more streams than it paints and
+    # retiring the oldest could end the very response the operator is watching.
+    stream = _Stream()
+    _streams.append(stream)
+    _retire_surplus()
     try:
-        while not stop.is_set() and not await request.is_disconnected():
+        while not stream.stop.is_set() and not await request.is_disconnected():
             settings = settings_store.get()
             frame = await asyncio.to_thread(_jpeg, settings)
             yield b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
             yield str(len(frame)).encode() + b"\r\n\r\n" + frame + b"\r\n"
+            # Reached only once the peer accepted the bytes: a stream nobody reads
+            # blocks above instead and its clock stays behind.
+            stream.last_frame = time.monotonic()
+            _retire_surplus()
             await asyncio.sleep(1 / max(1, settings.frame_rate))
     finally:
         with contextlib.suppress(ValueError):
-            _streams.remove(stop)
+            _streams.remove(stream)
+
+
+def _retire_surplus() -> None:
+    """Bound the open streams by dropping the ones that stopped being read."""
+    now = time.monotonic()
+    while len(_streams) > MAX_STREAMS:
+        stalest = min(_streams, key=lambda s: s.last_frame)
+        stalled = now - stalest.last_frame >= STREAM_STALL_S
+        if not stalled and len(_streams) <= HARD_MAX_STREAMS:
+            return  # every stream is being consumed; do not blind a live viewer
+        _streams.remove(stalest)
+        stalest.stop.set()
 
 
 def _jpeg(settings) -> bytes:

@@ -5,6 +5,8 @@
 
 const STATE_CLASS = { NEW: 'new', OLD: 'old', UNCERTAIN: 'unc', DETECTED: 'det', IDLE: 'old' };
 const POLL_MS = 700;
+const STREAM_WATCH_MS = 1500;
+const STREAM_STALL_LIMIT = 3; // ~4.5 s of an unchanging picture counts as frozen
 
 const $ = (id) => document.getElementById(id);
 const stateClass = (s) => STATE_CLASS[s] || 'det';
@@ -13,6 +15,10 @@ let currentView = 'live';
 let activeSession = null;
 let historySelection = '';
 let reportSelection = '';
+let streamSignature = '';
+let streamStalls = 0;
+const probe = Object.assign(document.createElement('canvas'), { width: 32, height: 18 });
+const probeCtx = probe.getContext('2d', { willReadFrequently: true });
 
 /* ------------------------------------------------------------ utilities */
 function pad(n) { return String(n).padStart(2, '0'); }
@@ -238,6 +244,39 @@ function restartStream() {
   const image = $('stream');
   image.removeAttribute('src');
   image.src = `/api/stream.mjpg?ts=${Date.now()}`;
+  streamSignature = '';
+  streamStalls = 0;
+}
+
+// A broken stream leaves the operator with a picture that lies while the rest of
+// the UI stays live: either the last frame stays on screen forever, or the image
+// goes blank. Both count as a stall, and neither raises anything the page would
+// otherwise notice, so the picture itself is the only reliable signal.
+function watchStream() {
+  const image = $('stream');
+  const signature = image.naturalWidth ? streamPixels(image) : 'blank';
+  if (signature === null) return; // no readback available; leave the picture alone
+  if (signature !== streamSignature) {
+    streamSignature = signature;
+    streamStalls = 0;
+    return;
+  }
+  streamStalls += 1;
+  if (streamStalls >= STREAM_STALL_LIMIT) restartStream();
+}
+
+// Cheap checksum of a downscaled copy of the frame; sensor noise makes a live
+// picture differ every time, so equality means nothing moved at all.
+function streamPixels(image) {
+  probeCtx.drawImage(image, 0, 0, probe.width, probe.height);
+  let sum = 0;
+  try {
+    const { data } = probeCtx.getImageData(0, 0, probe.width, probe.height);
+    for (let i = 0; i < data.length; i += 1) sum = (sum * 31 + data[i]) % 4294967291;
+  } catch (err) {
+    return null;
+  }
+  return String(sum);
 }
 
 /* -------------------------------------------------------------- session */
@@ -309,4 +348,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSessionButton();
   await tick();
   setInterval(tick, POLL_MS);
+  setInterval(watchStream, STREAM_WATCH_MS);
 });
