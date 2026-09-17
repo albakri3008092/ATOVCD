@@ -10,6 +10,7 @@ import threading
 import time
 from time import perf_counter
 
+from .camera import focus_score
 from .config import SettingsStore
 from .db import Database
 from .detect import build_detector
@@ -37,6 +38,7 @@ class Engine:
         self._tracker = Tracker()
         self._imu = build_imu()
         self._latency_ms = 0.0
+        self._focus_score = 0.0
         self._detections = 0
         self._detector_error = ""
         mode = settings.get().detector_mode
@@ -88,13 +90,15 @@ class Engine:
             frame = None if detector.mode == "simulate" else self._camera.frame(settings)
             detections = detector.detect(frame, settings)
             error = ""
+            focus = focus_score(frame) if frame is not None else 0.0
         except Exception as exc:  # a detector fault must not stop the console
-            detections, error = [], f"{type(exc).__name__}: {exc}"
+            detections, error, focus = [], f"{type(exc).__name__}: {exc}", 0.0
         latency = (perf_counter() - started) * 1000
 
         with self._lock:
             self._tick += 1
             self._latency_ms = round(latency, 1)
+            self._focus_score = round(focus, 1)
             self._detections = len(detections)
             self._detector_error = error
             changed = self._tracker.update(detections, settings.detection_confidence)
@@ -124,7 +128,7 @@ class Engine:
         with self._lock:
             session_id, started = self._session_id, self._session_started
             tracks = list(self._tracker.tracks)
-            detector, latency = self._detector, self._latency_ms
+            detector, latency, focus = self._detector, self._latency_ms, self._focus_score
             detections, error = self._detections, self._detector_error
         uptime = time.time() - self._boot_ts
         counts = self._db.counts(session_id) if session_id is not None else {}
@@ -144,6 +148,7 @@ class Engine:
                 "width": settings.camera_width,
                 "height": settings.camera_height,
                 "fps": settings.frame_rate,
+                "focus_score": focus,
             },
             "ai": {
                 "mode": detector.mode,

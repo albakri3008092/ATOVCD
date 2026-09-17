@@ -10,6 +10,11 @@ encodes that array. Two sources are supported, selected with the
 ``picamera2``
     Uses the Raspberry Pi camera stack. Falls back to ``synthetic`` when the
     ``picamera2`` module is unavailable.
+``uvc``
+    Any USB video class device through OpenCV ``VideoCapture`` (e.g. an IMX477
+    behind an Arducam B0278 CSI-to-USB adapter). ``ATOVCD_UVC_DEVICE`` selects
+    the V4L2 index or path (default ``0``). Falls back to ``synthetic`` when the
+    device cannot be opened.
 """
 
 import io
@@ -17,6 +22,7 @@ import logging
 import os
 import threading
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -100,6 +106,45 @@ class PiCamera2Camera:
         return np.ascontiguousarray(frame[:, :, :3])
 
 
+class UvcCamera:
+    """OpenCV VideoCapture wrapper for USB (UVC) cameras, yielding RGB frames."""
+
+    status = "UVC"
+
+    def __init__(self, device: str = "0") -> None:
+        source: int | str = int(device) if device.isdigit() else device
+        backend = cv2.CAP_V4L2 if os.name == "posix" else cv2.CAP_ANY
+        self._capture = cv2.VideoCapture(source, backend)
+        if not self._capture.isOpened():
+            raise RuntimeError(f"cannot open UVC device {device!r}")
+        self._configured: tuple[int, int] | None = None
+        self._lock = threading.Lock()
+
+    def frame(self, settings: Settings) -> np.ndarray:
+        size = (settings.camera_width, settings.camera_height)
+        with self._lock:
+            if self._configured != size:
+                self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
+                self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
+                self._configured = size
+            ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            raise RuntimeError("UVC device returned no frame")
+        if (bgr.shape[1], bgr.shape[0]) != size:
+            bgr = cv2.resize(bgr, size, interpolation=cv2.INTER_AREA)
+        return np.ascontiguousarray(bgr[:, :, ::-1])
+
+
+def focus_score(frame: np.ndarray) -> float:
+    """Image sharpness as the variance of the Laplacian (higher = sharper).
+
+    The absolute value depends on scene content, so it is only meaningful when
+    compared across focus positions on the same target.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
 def encode_jpeg(frame: np.ndarray, quality: int = 78) -> bytes:
     buffer = io.BytesIO()
     Image.fromarray(frame).save(buffer, format="JPEG", quality=quality)
@@ -108,9 +153,17 @@ def encode_jpeg(frame: np.ndarray, quality: int = 78) -> bytes:
 
 def build_camera(scene: Scene):
     """Return the configured frame source, degrading to synthetic frames."""
-    if os.environ.get("ATOVCD_CAMERA", "synthetic") == "picamera2":
+    mode = os.environ.get("ATOVCD_CAMERA", "synthetic")
+    if mode == "picamera2":
         try:
             return PiCamera2Camera()
         except Exception:  # a hardware failure must not take the console down
             log.warning("picamera2 unavailable, using synthetic frames", exc_info=True)
+    elif mode == "uvc":
+        try:
+            return UvcCamera(os.environ.get("ATOVCD_UVC_DEVICE", "0"))
+        except Exception:
+            log.warning("UVC camera unavailable, using synthetic frames", exc_info=True)
+    elif mode != "synthetic":
+        log.warning("unknown ATOVCD_CAMERA %r, using synthetic frames", mode)
     return SyntheticCamera(scene)

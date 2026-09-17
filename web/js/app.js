@@ -105,6 +105,7 @@ function renderLive(status) {
   $('hp-imu').textContent = `${status.imu.source} · ${status.imu.status} · P${status.imu.pitch}° R${status.imu.roll}° Y${status.imu.yaw}°`;
   $('hp-batt').textContent = status.battery.monitored ? `${status.battery.percent}%` : '—';
   $('hp-fps').textContent = `${status.camera.fps} fps`;
+  $('hp-focus').textContent = status.camera.focus_score > 0 ? status.camera.focus_score.toFixed(1) : '—';
   $('hp-ai').textContent = `${status.ai.backend} · ${status.ai.status} · ${status.ai.detections}`;
   $('hp-lat').textContent = `${status.ai.latency_ms} ms`;
   $('hp-camera').textContent = `${status.camera.status} · ${status.camera.source}`;
