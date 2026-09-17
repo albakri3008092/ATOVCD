@@ -141,7 +141,10 @@ in the SETTINGS tab is the operator-facing record; the AP itself is set up with
 Full field deployment — OS, AI HAT+, `systemd` autostart
 ([`deploy/atovcd.service`](deploy/atovcd.service)), the Wi-Fi AP, a pre-operation
 checklist and troubleshooting — is in
-[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia).
+[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia). A step-by-step
+build for the purchased kit (Pi 5 + Arducam B0240E/B0278 USB camera + Zowietek
+5–50 mm lens), from flashing the SD card to the lens focus test, is in
+[`docs/PEMASANGAN_KIT.md`](docs/PEMASANGAN_KIT.md).
 
 ## License
 
