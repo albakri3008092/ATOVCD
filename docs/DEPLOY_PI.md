@@ -68,6 +68,28 @@ Buka `http://atovcd.local:8000/` dari komputer di rangkaian yang sama. Panel
 LIVE mesti menunjukkan `Kamera = ONLINE · PICAMERA2` dan `Enjin AI = OPENCV · READY`.
 Jika ia menunjukkan `SYNTHETIC`, `picamera2` tidak dijumpai di dalam venv.
 
+### Kamera USB (Arducam B0240E + B0278)
+
+Adapter B0278 menjadikan IMX477 sebuah webcam USB (UVC), bukan kamera CSI —
+gunakan `uvc`, bukan `picamera2`:
+
+```bash
+ls /dev/video*                     # cari indeks peranti, biasanya /dev/video0
+ATOVCD_CAMERA=uvc ATOVCD_UVC_DEVICE=0 .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Panel LIVE mesti menunjukkan `Kamera = ONLINE · UVC`. Untuk servis systemd,
+tambah `Environment=ATOVCD_CAMERA=uvc` dalam `atovcd.service`.
+
+### Ujian fokus manual (lens Zowietek 5–50 mm)
+
+Panel LIVE memaparkan **Ketajaman fokus** — nombor tanpa unit yang naik apabila
+imej lebih tajam. Pada setiap jarak (10 / 20 / 30 / 40 / 50 m): halakan kamera
+pada papan, pusing gelang fokus sehingga nombor mencapai puncak, catat nilai.
+Jika satu kedudukan fokus memberi nilai hampir puncak pada semua jarak, fokus
+manual memadai; jika nilai jatuh ketara apabila jarak berubah, motorised focus
+diperlukan. Nombor hanya boleh dibanding pada papan dan zoom yang sama.
+
 ## 4. AI HAT+ (pilihan)
 
 ```bash

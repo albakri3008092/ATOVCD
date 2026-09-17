@@ -24,8 +24,15 @@ pip install -r requirements.txt
 Without a camera the server renders a scripted range scene with Pillow — markers
 drift, one appears mid-cycle and one is removed — so the **real** detector runs on
 real frames and produces real NEW/OLD events on a laptop. On the Pi, run with
-`ATOVCD_CAMERA=picamera2` to use the helmet camera; it falls back to the
-synthetic scene if `picamera2` is missing.
+`ATOVCD_CAMERA=picamera2` to use a CSI helmet camera, or
+`ATOVCD_CAMERA=uvc` for a USB camera (e.g. IMX477 behind an Arducam B0278
+CSI-to-USB adapter; `ATOVCD_UVC_DEVICE=0` or `/dev/video0` picks the device).
+Both fall back to the synthetic scene if the camera cannot be opened.
+
+The LIVE panel shows a **focus sharpness** score (variance of the Laplacian of
+the current frame). It is unitless and scene-dependent — use it only to compare
+focus positions on the same target, e.g. when tuning a manual lens at
+10/20/30/40/50 m: turn the focus ring until the number peaks.
 
 ## Detection engines
 
@@ -134,7 +141,10 @@ in the SETTINGS tab is the operator-facing record; the AP itself is set up with
 Full field deployment — OS, AI HAT+, `systemd` autostart
 ([`deploy/atovcd.service`](deploy/atovcd.service)), the Wi-Fi AP, a pre-operation
 checklist and troubleshooting — is in
-[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia).
+[`docs/DEPLOY_PI.md`](docs/DEPLOY_PI.md) (Bahasa Malaysia). A step-by-step
+build for the purchased kit (Pi 5 + Arducam B0240E/B0278 USB camera + Zowietek
+5–50 mm lens), from flashing the SD card to the lens focus test, is in
+[`docs/PEMASANGAN_KIT.md`](docs/PEMASANGAN_KIT.md).
 
 ## License
 
