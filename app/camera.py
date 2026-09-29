@@ -20,7 +20,9 @@ encodes that array. Two sources are supported, selected with the
 import io
 import logging
 import os
+import sys
 import threading
+import time
 
 import cv2
 import numpy as np
@@ -110,24 +112,50 @@ class UvcCamera:
     """OpenCV VideoCapture wrapper for USB (UVC) cameras, yielding RGB frames."""
 
     status = "UVC"
+    REOPEN_INTERVAL = 2.0
 
     def __init__(self, device: str = "0") -> None:
-        source: int | str = int(device) if device.isdigit() else device
-        backend = cv2.CAP_V4L2 if os.name == "posix" else cv2.CAP_ANY
-        self._capture = cv2.VideoCapture(source, backend)
-        if not self._capture.isOpened():
-            raise RuntimeError(f"cannot open UVC device {device!r}")
+        self._device = device
+        self._source: int | str = int(device) if device.isdigit() else device
+        self._backend = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
+        self._capture: cv2.VideoCapture | None = self._open()
         self._configured: tuple[int, int] | None = None
+        self._next_reopen = 0.0
         self._lock = threading.Lock()
+
+    def _open(self) -> cv2.VideoCapture:
+        capture = cv2.VideoCapture(self._source, self._backend)
+        if not capture.isOpened():
+            capture.release()
+            raise RuntimeError(f"cannot open UVC device {self._device!r}")
+        return capture
+
+    def _read(self) -> tuple[bool, np.ndarray | None]:
+        if self._capture is None:
+            if time.monotonic() < self._next_reopen:
+                return False, None
+            self._next_reopen = time.monotonic() + self.REOPEN_INTERVAL
+            self._capture = self._open()
+            self._configured = None
+            log.info("UVC device %r reopened", self._device)
+        ok, bgr = self._capture.read()
+        if not ok or bgr is None:
+            self._capture.release()
+            self._capture = None
+            self._next_reopen = time.monotonic() + self.REOPEN_INTERVAL
+        return ok, bgr
 
     def frame(self, settings: Settings) -> np.ndarray:
         size = (settings.camera_width, settings.camera_height)
         with self._lock:
-            if self._configured != size:
+            if self._capture is not None and self._configured != size:
                 self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, size[0])
                 self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, size[1])
                 self._configured = size
-            ok, bgr = self._capture.read()
+            try:
+                ok, bgr = self._read()
+            except RuntimeError:
+                ok, bgr = False, None
         if not ok or bgr is None:
             raise RuntimeError("UVC device returned no frame")
         if (bgr.shape[1], bgr.shape[0]) != size:
